@@ -19,4 +19,23 @@ export class BookApiClient {
 
     return this.http.get<Book[]>(this.apiUrl, { params });
   }
+
+  /**
+   * Fetches a single book by its ISBN
+   * @param isbn - The ISBN of the book to fetch
+   * @returns Observable of the book
+   */
+  getBookByIsbn(isbn: string): Observable<Book> {
+    return this.http.get<Book>(`${this.apiUrl}/${isbn}`);
+  }
+
+  /**
+   * Updates an existing book
+   * @param isbn - The ISBN of the book to update
+   * @param book - The updated book data
+   * @returns Observable of the updated book
+   */
+  updateBook(isbn: string, book: Book): Observable<Book> {
+    return this.http.put<Book>(`${this.apiUrl}/${isbn}`, book);
+  }
 }
