@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -45,16 +45,44 @@ export class BookApiClient {
    * @returns Observable of the book
    */
   getBookByIsbn(isbn: string): Observable<Book> {
-    return this.http.get<Book>(`${this.apiUrl}/${isbn}`);
+    // Use query parameter instead of path parameter because json-server
+    // uses 'id' as the default identifier, not 'isbn'
+    // GET /books/12333 searches for id === "12333", not isbn === "12333"
+    const params = new HttpParams().set('isbn', isbn);
+    return this.http.get<Book[]>(this.apiUrl, { params }).pipe(
+      map((books: Book[]) => {
+        if (books.length === 0) {
+          // Throw an HttpErrorResponse-like error to match expected error handling
+          const error = new HttpErrorResponse({
+            error: `Book with ISBN ${isbn} not found`,
+            status: 404,
+            statusText: 'Not Found'
+          });
+          throw error;
+        }
+        return books[0];
+      })
+    );
   }
 
   /**
    * Updates an existing book
-   * @param isbn - The ISBN of the book to update
+   * @param isbn - The ISBN of the book to update (kept for API consistency)
    * @param book - The updated book data
    * @returns Observable of the updated book
    */
   updateBook(isbn: string, book: Book): Observable<Book> {
-    return this.http.put<Book>(`${this.apiUrl}/${isbn}`, book);
+    // Use the book's id for the PUT request since json-server uses 'id' as identifier
+    // The isbn parameter is kept for consistency with the API, but we use book.id for the actual update
+    return this.http.put<Book>(`${this.apiUrl}/${book.id}`, book);
+  }
+
+  /**
+   * Creates a new book
+   * @param book - The book data to create (id and userId will be generated/handled by the server)
+   * @returns Observable of the created book
+   */
+  createBook(book: Omit<Book, 'id' | 'userId'>): Observable<Book> {
+    return this.http.post<Book>(this.apiUrl, book);
   }
 }

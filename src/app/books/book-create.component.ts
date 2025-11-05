@@ -1,13 +1,11 @@
-import { Component, signal, ChangeDetectionStrategy, inject, effect } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router, RouterModule } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs/operators';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators, FormGroup } from '@angular/forms';
+import { Router, RouterModule } from '@angular/router';
 import { Book } from './book';
 import { BookApiClient } from './book-api-client.service';
 
 @Component({
-  selector: 'app-book-edit',
+  selector: 'app-book-create',
   imports: [ReactiveFormsModule, RouterModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -29,22 +27,11 @@ import { BookApiClient } from './book-api-client.service';
             d="M15 19l-7-7 7-7"
           />
         </svg>
-        Back to Details
+        Back to List
       </button>
 
-      @if (loading()) {
-        <div class="flex justify-center items-center py-20">
-          <div class="animate-pulse flex flex-col items-center">
-            <div
-              class="h-16 w-16 rounded-full border-4 border-t-blue-700 border-r-blue-700 border-b-gray-200 border-l-gray-200 animate-spin"
-            ></div>
-            <p class="mt-4 text-gray-600">Loading book details...</p>
-          </div>
-        </div>
-      }
-
       @if (error()) {
-        <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center mb-6">
           <svg
             class="h-12 w-12 text-red-500 mx-auto mb-4"
             fill="none"
@@ -58,20 +45,14 @@ import { BookApiClient } from './book-api-client.service';
               d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          <p class="text-red-800 font-medium mb-2">Error loading book</p>
+          <p class="text-red-800 font-medium mb-2">Error creating book</p>
           <p class="text-red-600 text-sm">{{ error() }}</p>
-          <button
-            (click)="goBack()"
-            class="mt-4 bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition duration-200"
-          >
-            Back to Details
-          </button>
         </div>
       }
 
-      @if (!loading() && !error() && bookForm) {
+      @if (bookForm) {
         <div class="bg-white rounded-lg shadow-lg p-8">
-          <h1 class="text-3xl font-bold text-gray-900 mb-8">Edit Book</h1>
+          <h1 class="text-3xl font-bold text-gray-900 mb-8">Create New Book</h1>
 
           <form [formGroup]="bookForm" (ngSubmit)="onSubmit()" class="space-y-6">
             <div>
@@ -141,9 +122,10 @@ import { BookApiClient } from './book-api-client.service';
                   type="text"
                   formControlName="isbn"
                   [class]="getInputClasses('isbn')"
-                  readonly
                 />
-                <p class="mt-1 text-xs text-gray-500">ISBN cannot be changed</p>
+                @if (bookForm.get('isbn')?.invalid && bookForm.get('isbn')?.touched) {
+                  <p class="mt-1 text-sm text-red-600">ISBN is required</p>
+                }
               </div>
 
               <div>
@@ -158,7 +140,7 @@ import { BookApiClient } from './book-api-client.service';
                   min="1"
                 />
                 @if (bookForm.get('numPages')?.invalid && bookForm.get('numPages')?.touched) {
-                  <p class="mt-1 text-sm text-red-600">Valid page number is required</p>
+                  <p class="mt-1 text-sm text-red-600">Valid page number (minimum 1) is required</p>
                 }
               </div>
             </div>
@@ -228,10 +210,10 @@ import { BookApiClient } from './book-api-client.service';
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Saving...
+                    Creating...
                   </span>
                 } @else {
-                  Save Changes
+                  Create Book
                 }
               </button>
             </div>
@@ -241,94 +223,28 @@ import { BookApiClient } from './book-api-client.service';
     </div>
   `
 })
-export class BookEditComponent {
-  private readonly route = inject(ActivatedRoute);
+export class BookCreateComponent {
   private readonly router = inject(Router);
   private readonly bookApiClient = inject(BookApiClient);
   private readonly fb = inject(FormBuilder);
 
-  readonly isbn = toSignal(this.route.paramMap.pipe(map(params => params.get('isbn'))), { initialValue: null });
-
-  readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly saving = signal(false);
   readonly bookForm = this.fb.group({
-    id: ['', Validators.required],
-    isbn: [{ value: '', disabled: true }], // No validator needed - disabled controls don't participate in validation
+    // id and userId are omitted - will be generated/handled by json-server
+    isbn: ['', Validators.required],
     title: ['', Validators.required],
     subtitle: [''],
     author: ['', Validators.required],
     publisher: ['', Validators.required],
-    numPages: [0, [Validators.required, Validators.min(1)]],
+    numPages: [null as number | null, [Validators.required, Validators.min(1)]],
     price: ['', Validators.required],
     cover: ['', [Validators.required, Validators.pattern(/^https?:\/\/.+/)]],
-    abstract: ['', Validators.required],
-    userId: [0, Validators.required]
+    abstract: ['', Validators.required]
   });
-  private originalIsbn = '';
 
   constructor() {
-    effect(() => {
-      const isbnValue = this.isbn();
-      if (isbnValue) {
-        this.originalIsbn = isbnValue;
-        this.loadBook(isbnValue);
-      } else {
-        this.error.set('ISBN parameter is missing');
-        this.loading.set(false);
-      }
-    });
-  }
-
-  private loadBook(isbn: string): void {
-    this.loading.set(true);
-    this.error.set(null);
-    this.bookApiClient.getBookByIsbn(isbn).subscribe({
-      next: book => {
-        this.initializeForm(book);
-        this.loading.set(false);
-      },
-      error: (error: unknown) => {
-        console.error('Error fetching book:', error);
-        const httpError = error as { status?: number };
-        this.error.set(httpError.status === 404 ? 'Book not found' : 'Failed to load book details');
-        this.loading.set(false);
-      }
-    });
-  }
-
-  private initializeForm(book: Book): void {
-    console.log('Initializing form with book:', book);
-    this.bookForm.patchValue({
-      id: book.id,
-      isbn: book.isbn,
-      title: book.title,
-      subtitle: book.subtitle || '',
-      author: book.author,
-      publisher: book.publisher,
-      numPages: book.numPages,
-      price: book.price,
-      cover: book.cover,
-      abstract: book.abstract,
-      userId: book.userId ?? 0 // Handle undefined/null userId for created books
-    });
-    
-    // Log form status after patching
-    console.log('Form status after patchValue:', this.bookForm.status);
-    console.log('Form valid:', this.bookForm.valid);
-    console.log('Form invalid:', this.bookForm.invalid);
-    console.log('Form errors:', this.bookForm.errors);
-    
-    // Log individual control errors
-    Object.keys(this.bookForm.controls).forEach(key => {
-      const control = this.bookForm.get(key);
-      if (control && control.errors) {
-        console.log(`Control '${key}' errors:`, control.errors);
-      }
-      if (control && control.invalid) {
-        console.log(`Control '${key}' is invalid. Value:`, control.value, 'Errors:', control.errors);
-      }
-    });
+    // Form is initialized above
   }
 
   getInputClasses(fieldName: string): string {
@@ -349,38 +265,78 @@ export class BookEditComponent {
     }
 
     this.saving.set(true);
-    const formValue = this.bookForm.getRawValue();
+    this.error.set(null);
     
-    // Type assertion is safe here because form is validated
-    const bookData: Book = {
-      id: formValue.id!,
-      isbn: formValue.isbn!,
-      title: formValue.title!,
-      subtitle: formValue.subtitle || undefined,
-      author: formValue.author!,
-      publisher: formValue.publisher!,
-      numPages: formValue.numPages!,
-      price: formValue.price!,
-      cover: formValue.cover!,
-      abstract: formValue.abstract!,
-      userId: formValue.userId!
+    const formValue = this.bookForm.value;
+    
+    // Create payload without id and userId fields - explicitly structure the object
+    // Type-safe: Omit<Book, 'id' | 'userId'> ensures id and userId are never included at compile time
+    // The form does not contain 'id' or 'userId' controls, so they will be undefined
+    const bookData: Omit<Book, 'id' | 'userId'> = {
+      isbn: String(formValue.isbn).trim(),
+      title: String(formValue.title).trim(),
+      subtitle: formValue.subtitle ? String(formValue.subtitle).trim() : undefined,
+      author: String(formValue.author).trim(),
+      publisher: String(formValue.publisher).trim(),
+      numPages: Number(formValue.numPages),
+      price: String(formValue.price).trim(),
+      cover: String(formValue.cover).trim(),
+      abstract: String(formValue.abstract).trim()
     };
     
-    this.bookApiClient.updateBook(this.originalIsbn, bookData).subscribe({
-      next: updatedBook => {
+    // Payload is guaranteed to be free of 'id' and 'userId' fields:
+    // 1. FormGroup has no 'id' or 'userId' controls (verified in constructor)
+    // 2. TypeScript Omit<Book, 'id' | 'userId'> prevents them from being included
+    // 3. Explicit object structure ensures only specified fields are included
+    
+    // Debug: Log payload to verify it's clean (remove in production)
+    console.log('Creating book with payload:', JSON.stringify(bookData, null, 2));
+    console.log('Payload keys:', Object.keys(bookData));
+    console.log('Has id field?', 'id' in bookData);
+    console.log('Has userId field?', 'userId' in bookData);
+    
+    this.bookApiClient.createBook(bookData).subscribe({
+      next: (createdBook) => {
         this.saving.set(false);
-        this.router.navigate(['/books', updatedBook.isbn]);
+        this.router.navigate(['/books', createdBook.isbn]);
       },
       error: (error: unknown) => {
-        console.error('Error updating book:', error);
-        this.error.set('Failed to update book. Please try again.');
-        this.saving.set(false);
+        this.handleError(error);
       }
     });
   }
 
+  private handleError(error: unknown): void {
+    console.error('Error creating book:', error);
+    
+    let errorMessage = 'Failed to create book. Please try again.';
+    
+    if (error && typeof error === 'object' && 'status' in error) {
+      const httpError = error as { status: number; error?: { error?: string } };
+      if (httpError.status === 500) {
+        const errorText = httpError.error?.error || '';
+        if (errorText.includes('duplicate id')) {
+          // This could mean:
+          // 1. The ISBN already exists (json-server might use ISBN as ID)
+          // 2. There's a conflict with auto-generated ID
+          const formValue = this.bookForm.value;
+          errorMessage = `A book with ISBN "${formValue.isbn}" may already exist. Please check if the ISBN is unique or try a different ISBN.`;
+        } else {
+          errorMessage = `Server error: ${errorText || 'Internal server error'}. Please try again.`;
+        }
+      } else if (httpError.status === 409) {
+        errorMessage = 'A book with this ISBN already exists.';
+      } else if (httpError.status === 400) {
+        errorMessage = 'Invalid book data. Please check all fields.';
+      }
+    }
+    
+    this.error.set(errorMessage);
+    this.saving.set(false);
+  }
+
   goBack(): void {
-    this.router.navigate(['/books', this.originalIsbn]);
+    this.router.navigate(['/']);
   }
 }
 

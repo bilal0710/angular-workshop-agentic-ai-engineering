@@ -1,0 +1,115 @@
+---
+alwaysApply: true
+---
+
+# Refactoring Instructions for BookListComponent
+
+## Extracted Comment
+**Location:** `src/app/books/book-list.component.ts:272`
+```typescript
+// You must unsubscribe instrumenting takeUnit(this.destroyRef) avoiding memory leaks
+```
+
+## Refactoring Tasks
+
+1. **Fix RxJS subscription memory leak**
+   - Add proper unsubscription handling for the `bookApiClient.getBooks()` observable
+   - Use Angular's `takeUntilDestroyed()` operator (recommended for Angular 16+)
+
+## Before/After Examples
+
+### Before (Current Implementation - Memory Leak)
+```typescript
+private loadBooks(page: number, search?: string): void {
+  this.loading.set(true);
+  const pageSizeValue = this.pageSize();
+  // You must unsubscribe instrumenting takeUnit(this.destroyRef) avoiding memory leaks 
+  this.bookApiClient.getBooks(page, pageSizeValue, search).subscribe({
+    next: response => {
+      this.books.set(response.books);
+      this.totalItems.set(response.total);
+      this.loading.set(false);
+    },
+    error: (error: unknown) => {
+      console.error('Error fetching books:', error);
+      this.loading.set(false);
+    },
+  });
+}
+```
+
+### After (Fixed Implementation - Using `takeUntilDestroyed()`)
+```typescript
+import {
+  DestroyRef,
+  // ... other imports
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+
+export class BookListComponent {
+  private readonly bookApiClient = inject(BookApiClient);
+  private readonly destroyRef = inject(DestroyRef);
+
+  // ... other code ...
+
+  private loadBooks(page: number, search?: string): void {
+    this.loading.set(true);
+    const pageSizeValue = this.pageSize();
+    this.bookApiClient.getBooks(page, pageSizeValue, search)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: response => {
+          this.books.set(response.books);
+          this.totalItems.set(response.total);
+          this.loading.set(false);
+        },
+        error: (error: unknown) => {
+          console.error('Error fetching books:', error);
+          this.loading.set(false);
+        },
+      });
+  }
+}
+```
+
+## Step-by-Step Migration Instructions
+
+1. **Add the imports** at the top of the file:
+   ```typescript
+   import {
+     DestroyRef,
+     // ... existing imports
+   } from '@angular/core';
+   import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+   ```
+
+2. **Inject `DestroyRef`** in the component class:
+   ```typescript
+   private readonly destroyRef = inject(DestroyRef);
+   ```
+
+3. **Update the `loadBooks()` method**:
+   - Add `.pipe(takeUntilDestroyed(this.destroyRef))` before `.subscribe()`
+   - Remove the old comment on line 272
+
+## Important Note
+
+⚠️ **When using `takeUntilDestroyed()` in methods (not in constructor):**
+- You MUST inject `DestroyRef` and pass it as a parameter: `takeUntilDestroyed(this.destroyRef)`
+- Without the parameter, `takeUntilDestroyed()` can only be used in an injection context (constructor, field initializer)
+- This prevents the `NG0203` error: "takeUntilDestroyed() can only be used within an injection context"
+
+## Benefits
+
+- ✅ Prevents memory leaks: automatic unsubscription when component is destroyed
+- ✅ Cleaner code: no manual subscription management
+- ✅ Modern Angular pattern: uses Angular 16+ features
+- ✅ Type-safe: fully typed with TypeScript
+
+## Notes
+
+- `takeUntilDestroyed()` is recommended for Angular 16+ (this project uses Angular 20.2.1)
+- The operator automatically unsubscribes when the component is destroyed
+- No need to manually track or clean up subscriptions
+- Works with both standalone and NgModule components
+- **Important**: When used in methods (not constructor), always pass `DestroyRef` as parameter: `takeUntilDestroyed(this.destroyRef)`

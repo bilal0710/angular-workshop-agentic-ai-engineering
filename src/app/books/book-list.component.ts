@@ -1,26 +1,39 @@
-import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   input,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterModule } from '@angular/router';
 import { Book } from './book';
 import { BookApiClient } from './book-api-client.service';
 import { BookItemComponent } from './book-item.component';
 
 @Component({
   selector: 'app-book-list',
-  imports: [CommonModule, BookItemComponent],
+  imports: [BookItemComponent, RouterModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="container mx-auto px-4 py-12 max-w-7xl">
-      <h1 class="text-3xl font-bold mb-10 text-blue-700 border-b pb-4 border-gray-200">
-        Book Collection
-      </h1>
+      <div class="flex justify-between items-center mb-10">
+        <h1 class="text-3xl font-bold text-blue-700 border-b pb-4 border-gray-200 flex-1">
+          Book Collection
+        </h1>
+        <a
+          routerLink="/books/create"
+          class="ml-6 flex items-center px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium transition duration-200"
+        >
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+          </svg>
+          Create New Book
+        </a>
+      </div>
 
       <div class="mb-6">
         <div class="flex items-center border-b-2 border-gray-300 py-2">
@@ -172,6 +185,7 @@ import { BookItemComponent } from './book-item.component';
 export class BookListComponent {
   readonly pageSize = input<number>(10);
   private readonly bookApiClient = inject(BookApiClient);
+  private readonly destroyRef = inject(DestroyRef);
 
   // State signals
   readonly books = signal<Book[]>([]);
@@ -257,18 +271,19 @@ export class BookListComponent {
   private loadBooks(page: number, search?: string): void {
     this.loading.set(true);
     const pageSizeValue = this.pageSize();
-
-    this.bookApiClient.getBooks(page, pageSizeValue, search).subscribe({
-      next: response => {
-        this.books.set(response.books);
-        this.totalItems.set(response.total);
-        this.loading.set(false);
-      },
-      error: (error: unknown) => {
-        console.error('Error fetching books:', error);
-        this.loading.set(false);
-      },
-    });
+    this.bookApiClient.getBooks(page, pageSizeValue, search)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: response => {
+          this.books.set(response.books);
+          this.totalItems.set(response.total);
+          this.loading.set(false);
+        },
+        error: (error: unknown) => {
+          console.error('Error fetching books:', error);
+          this.loading.set(false);
+        },
+      });
   }
 
   onSearchInput(event: Event): void {

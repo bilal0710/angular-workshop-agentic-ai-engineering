@@ -1,5 +1,7 @@
-import { Component, OnInit, signal, ChangeDetectionStrategy, inject } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy, inject, effect } from '@angular/core';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs/operators';
 import { Book } from './book';
 import { BookApiClient } from './book-api-client.service';
 
@@ -157,23 +159,27 @@ import { BookApiClient } from './book-api-client.service';
     </div>
   `
 })
-export class BookDetailsComponent implements OnInit {
+export class BookDetailsComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly bookApiClient = inject(BookApiClient);
 
-  book = signal<Book | null>(null);
-  loading = signal(true);
-  error = signal<string | null>(null);
+  readonly isbn = toSignal(this.route.paramMap.pipe(map(params => params.get('isbn'))), { initialValue: null });
+  
+  readonly book = signal<Book | null>(null);
+  readonly loading = signal(true);
+  readonly error = signal<string | null>(null);
 
-  ngOnInit(): void {
-    const isbn = this.route.snapshot.paramMap.get('isbn');
-    if (isbn) {
-      this.loadBook(isbn);
-    } else {
-      this.error.set('ISBN parameter is missing');
-      this.loading.set(false);
-    }
+  constructor() {
+    effect(() => {
+      const isbnValue = this.isbn();
+      if (isbnValue) {
+        this.loadBook(isbnValue);
+      } else {
+        this.error.set('ISBN parameter is missing');
+        this.loading.set(false);
+      }
+    });
   }
 
   private loadBook(isbn: string): void {
@@ -184,9 +190,10 @@ export class BookDetailsComponent implements OnInit {
         this.book.set(book);
         this.loading.set(false);
       },
-      error: error => {
+      error: (error: unknown) => {
         console.error('Error fetching book:', error);
-        this.error.set(error.status === 404 ? 'Book not found' : 'Failed to load book details');
+        const httpError = error as { status?: number };
+        this.error.set(httpError.status === 404 ? 'Book not found' : 'Failed to load book details');
         this.loading.set(false);
       }
     });
